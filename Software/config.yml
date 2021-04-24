@@ -1,16 +1,26 @@
+#######################################################
+#     Spiros Daskalakis                               #
+#     last Revision: 22/04/2021                       #
+#     Python Version:  3.9                            #
+#     Email: daskalakispiros@gmail.com                #
+#     Website: www.daskalakispiros.com                #
+#######################################################
+# Configuration File For Chirp Spread Spectrum System
 
 
-# TX info
-TX_SAMPLING_RATE: 192000
-SOUND_RES: 24 #16 or 24
-SOUND_VOLUME: 90
+# TX Sound Card Parameters
+SOUND_RES: 16  # SOUND_RES:16 or 24
 
-#Chirp info
-BW: 5000
+# Chirp Signal Parameters
+MODE: 0 #MODE 0: pure chirp, 1: Gray chirp, 2: Coded chirp
 SF: 8
+CR: 4
 CHIRP_F_START: 15000
 CHIRP_F_STOP:  20000
+PREAMBLE: [-1, -1, -1, 1, 1, 1,1]
 
 
 # EX info
-RX_SAMPLING_RATE: 1000000
+
+TX_SAMPLING_RATE: 192000
+RX_SAMPLING_RATE: 1140000

@@ -1,6 +1,6 @@
 #######################################################
 #     Spiros Daskalakis                               #
-#     last Revision: 16/03/2021                       #
+#     last Revision: 22/04/2021                       #
 #     Python Version:  3.9                            #
 #     Email: daskalakispiros@gmail.com                #
 #     Website: www.daskalakispiros.com                #
@@ -8,36 +8,59 @@
 
 import numpy as np
 import simpleaudio as sa
-import yaml
-from box import Box
 import coding
 
 
 class TXtag:
 
-    def __init__(self, CR=4, mode=0):
+    def __init__(self, mode=0, CR=4, SF=8, BW=5000, CHIRP_F_START=15000, TX_SAMPLING_RATE=192000, SOUND_RES=16,
+                 PREAMBLE=[-1, -1, -1, 1, 1, 1, 1]):
+
+        # Init parameters
         self.mode = mode
-        self.preamble_mask = np.array([-1, -1, -1, -1, -1, 1, 1, 1])
-        self.CR=CR
+        self.CR = CR
+        self.SF = SF
+        self.BW = BW
+        self.CHIRP_F_START = CHIRP_F_START
+        self.TX_SAMPLING_RATE = TX_SAMPLING_RATE
+        self.SOUND_RES = SOUND_RES
+        # Convert list to np array
+        self.preamble_mask = np.array(PREAMBLE)
 
-        with open("config.yml", "r") as ymlfile:
-            self.cfg = Box(yaml.safe_load(ymlfile), default_box=True, default_box_attr=None)
         self.print_tx_info()
-
         self.preamble = self.create_preamble_packet()
 
+    def print_tx_info(self):
+        """
+         Print Parameters of TX tag
+        """
+        print("%%%%%%%%%%%% TX Parameters  %%%%%%%%%%%%%%%%")
+        print("Sample Rate:", self.TX_SAMPLING_RATE, "Sps")
+        print("Mode:", self.mode)
+        print("Spreading factor:", self.SF)
+        print("Coding rate:", self.CR)
+        print("Sound Card Sampling Rate:", self.TX_SAMPLING_RATE)
+        print("Sound Card Resolution", self.SOUND_RES)
+        print("BandWith:", self.BW, "Hz")
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+
     def create_symbols(self, text_message):
+        """
+                Convert a string message to an integer symbols according the mode
+                MoDE=0: Create Raw Symbols
+                MoDE=1: Create Inverse Gray Symbols
+                MoDE=2: Create Inverse Hamming Encoded symbols
+                return: header_symbols, symbols, raw_symbols
+        """
         # raw symbols
-        print('Text:', text_message)
+        print('Initial Text:', text_message)
         symbols = self.text_to_numbers(text_message)
         raw_symbols = self.text_to_numbers(text_message)
         print('Initial Symbols:', symbols)
+        # Create the Header: [Symbols Number, CR]
         header_symbols = np.array([symbols.size, self.CR])
         print('Header Symbols:', header_symbols)
 
-        # %%%%%%%%%%%%%%%TEST%%%%%%%%%%%%%%%%%%%%%%%
-        # signal = self.lora_symbol(3, inverse=0)
-        # self.send_packet_to_sound_card(signal)
         if self.mode == 1:
             # inverse Gray encoding for Payload
             for i in range(len(symbols)):
@@ -49,27 +72,10 @@ class TXtag:
             print('Gray Header Symbols:', header_symbols)
         return header_symbols, symbols, raw_symbols
 
-    def print_tx_info(self):
-        print("%%%%%%%%%%%% TX Parameters  %%%%%%%%%%%%%%%%")
-        print("Sample Rate:", self.cfg.TX_SAMPLING_RATE, "Sps")
-        print("Spreading factor:", self.cfg.SF)
-        print("Coding rate:", self.cfg.CR)
-        print("BandWith:", self.cfg.BW, "Hz")
-        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-
-    def inverse_gray_encoder(self, n):
-        inv = 0
-        # Taking xor until
-        # n becomes zero
-        while n:
-            inv = inv ^ n
-            n = n >> 1
-        return inv
-
     def text_to_numbers(self, text):
         """
-        Convert a string message to an integer number according the utf-8 encoding
-        return: int numpy array
+            Convert a string message to an integer number according the utf-8 encoding
+            return: int numpy array
         """
         # print("The original message is : " + str(text))
         arr = bytes(text, 'utf-8')
@@ -80,26 +86,30 @@ class TXtag:
             i = i + 1
         return numbers
 
-    def text_to_binary(self):
-        text = self.message_text
-        print("The original message is : " + str(text))
-        sf = self.cfg.SF
-        # using join() + ord() + format()
-        # Converting String to binary
-        res = ''.join(format(ord(i), '08b') for i in text)
-        # printing result
-
-        print("The message after binary conversion : " + str(res))
-        # print("The message after dec conversion : " + arr2)
-        return res
+    def inverse_gray_encoder(self, n):
+        """
+                Convert ints to inverse Gray ints
+                return: int numpy array
+        """
+        inv = 0
+        # Taking xor until
+        # n becomes zero
+        while n:
+            inv = inv ^ n
+            n = n >> 1
+        return inv
 
     def lora_symbol(self, shift, inverse=0):
+        """
+                Create a shifted chirp signal
+                :return 2 dimensional np array with I and Q parts of the signal
+        """
         # Initialization
         phase = 0
-        Frequency_Offset = self.cfg.CHIRP_F_START
-        sf = self.cfg.SF
-        fs = self.cfg.TX_SAMPLING_RATE
-        bw = self.cfg.BW
+        Frequency_Offset = self.CHIRP_F_START
+        sf = self.SF
+        fs = self.TX_SAMPLING_RATE
+        bw = self.BW
         num_samples_in = fs * (2 ** sf) / bw
         num_samples = round(num_samples_in)
 
@@ -131,7 +141,13 @@ class TXtag:
         return signal
 
     def create_preamble_packet(self):
-        ##Preamble###################################################
+        """
+                        This function Creates the Preamble of the tag
+                        Base on the preamble_mask
+                        It is called by the INIT funtion at the top of the class
+                        :return 2 dimensional np array with I and Q parts of the signal
+        """
+        # Preamble
         mask = self.preamble_mask
         preamble_up_chirp = self.lora_symbol(0, 0)
         preamble_down_chirp = self.lora_symbol(0, 1)
@@ -150,15 +166,21 @@ class TXtag:
         return preamble
 
     def create_packet(self, header_symbols, payload_symbols):
-
-        ##Header#########################################################
+        """
+                This function Creates the Packet of the tag
+                Packet Format: [ [preamble],[header],[payload] ]
+                :param payload_symbols: int np array
+                :param header_symbols:  int np array
+                :return 2 dimensional np array with I and Q parts of the signal
+        """
+        # Create Header
         header = np.zeros((1, 2))
         for k in range(header_symbols.size):
             header_signal = self.lora_symbol(header_symbols[k], 0)
             header = np.concatenate((header, header_signal), axis=0)
         header = header[1:, :]
 
-        ##Payload#########################################################
+        # Create Payload
         payload = np.zeros((1, 2))
         for k in range(payload_symbols.size):
             payload_signal = self.lora_symbol(payload_symbols[k], 0)
@@ -173,10 +195,16 @@ class TXtag:
         return packet
 
     def send_packet_to_sound_card(self, packet):
-        # This function uses the sound card in order to produce the chirp signals
-        # packet is a array of floats
-        sound_fs = self.cfg.TX_SAMPLING_RATE
-        sound_res = self.cfg.SOUND_RES
+
+        """
+                        This function uses the sound card in order to produce the chirp signals
+                        :param packet: array of floats
+                        sound_res 16 or 24 bits
+                        :return 0
+        """
+
+        sound_fs = self.TX_SAMPLING_RATE
+        sound_res = self.SOUND_RES
         ch = 2
         if sound_res == 16:
             # Ensure that highest value is in 16-bit range
@@ -203,5 +231,20 @@ class TXtag:
             play_obj.wait_done()
         # Start playback
         # Wait for playback to finish before exiting
-
         print("Packet sent to Sound Card")
+
+    def text_to_binary(self, message_text):
+        """
+                       text to binary
+                       return: str
+        """
+        print("The original message is : " + str(message_text))
+        sf = self.SF
+        # using join() + ord() + format()
+        # Converting String to binary
+        res = ''.join(format(ord(i), '08b') for i in message_text)
+        # printing result
+
+        print("The message after binary conversion : " + str(res))
+        # print("The message after dec conversion : " + arr2)
+        return res
